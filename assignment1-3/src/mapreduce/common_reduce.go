@@ -2,7 +2,6 @@
 package mapreduce
 
 import (
-    "fmt"
     "io/ioutil"
     "encoding/json"
     "sort"
@@ -43,51 +42,61 @@ func doReduce(
     // file.Close()
     //
     // Use checkError to handle errors.
-    //fmt.Printf("REDUCE nMap [%d]\n", nMap)
+
+    debug("Entering doReduce function\n")
     
-    var kvArr []KeyValue
-    // Call reduce function for each map
+    var keyValuePair []KeyValue
+    var kvArr_tmp []KeyValue
+
     for m := 0; m < nMap; m++ {
-      // Get marshalled json object produced by map function
-      content, err := ioutil.ReadFile(reduceName(jobName, m, reduceTaskNumber))
-      checkError(err)
+        kvArr_tmp = nil
 
-      var kvArr_tmp []KeyValue
-      err = json.Unmarshal(content, &kvArr_tmp)
-      checkError(err)
-      
-      kvArr = append(kvArr, kvArr_tmp...)
+        // Get marshalled json object produced by map function
+        content, err := ioutil.ReadFile(reduceName(jobName, m, reduceTaskNumber))
+        checkError(err)
+
+
+        // Unmarshall json object and check for errors
+        err = json.Unmarshal(content, &kvArr_tmp)
+        checkError(err)
+
+        // Merge all contents from all intermediate files 
+        keyValuePair = append(keyValuePair, kvArr_tmp...)
     }
       
-    //fmt.Printf("REDUCE sort keys\n")
     // Then we need to sort the intermediate key/value pairs by key 
-    sortKeyValues(kvArr)
+    sortKeyValues(keyValuePair)
+    debug("doReduce - sorted keys\n %v\n", keyValuePair)
 
-    // Now, for each key, we need to generate a list of that key's string value (merged across all inputs)
-    // falta esto ... para no pasar emptyString mas abajo... enc.Encode(KeyValue{kvArr[i].Key, reduceF(kvArr[i].Key, emptyString)})
-    countMap := make(map[string][]string)
+    // Setting up a map to easily keep track of unique keys and values
+    keyValueMap := make(map[string][]string)
 
-    for k := 0; k < len(kvArr); k++ {
-        key_temp := kvArr[k].Key
-        value_tem := kvArr[k].Value
-
-        _, ok := countMap[key_temp]
-        _ = ok
-        countMap[key_temp] = append(countMap[key_temp], value_tem)
+    /* Iterate through key/value pairs and using the map
+     * merge all values for one same key together
+     */
+    for k := 0; k < len(keyValuePair); k++ {
+        key := keyValuePair[k].Key
+        keyValueMap[key] = append(keyValueMap[key], keyValuePair[k].Value)
     }
-    //fmt.Printf("REDUCE nMap [%v]\n", countMap)
-    // Write result to output file
+    
+    debug("doReduce -  key/value pairs sorted and merged together\n %v \n", keyValueMap)
+
+    // Setup output file w/encoder
     output_file, err := os.OpenFile(mergeName(jobName, reduceTaskNumber), os.O_RDWR|os.O_CREATE, 0755)
     checkError(err)
 
     enc := json.NewEncoder(output_file)
 
-    fmt.Printf("REDUCE: newest logic\n")
-    for keyVal, valueArr := range countMap{
-        enc.Encode(KeyValue{keyVal, reduceF(keyVal, valueArr)})
-    }
-    output_file.Close()
+    debug("doReduce - Output file\n")
 
+    /* Iterate through key/value pairs, apply reduce funtion
+     * and directly encode it to output file
+     */
+    for key, value := range keyValueMap{
+        enc.Encode(KeyValue{key, reduceF(key, value)})
+    }
+
+    output_file.Close()
 }
 
 /* Helper function to sort a list of key/values by increasing key value.

@@ -4,7 +4,6 @@ import (
     "hash/fnv"
     "io/ioutil"
     "encoding/json"
-    //"fmt"
 )
 
 // doMap does the job of a map worker: it reads one of the input files
@@ -44,14 +43,18 @@ func doMap(
     //
     // Remember to close the file after you have written all the values!
     // Use checkError to handle errors.
-    //fmt.Printf("MAP\n")
+    
+    debug("Entering doMap function\n")
+
+    // Open input file and check for errors
     dat, err := ioutil.ReadFile(inFile)
     checkError(err)
     
-    //fmt.Printf("MAP: Calling mapF infile = [%s] with dat = [%s]\n", inFile, string(dat))
+    /* Call the mapF function with give input file and input file parsed into a string
+     * Output is intermediate Key/Value pairs 
+     */
     intermediateKeyValues := mapF(inFile, string(dat))
-    //fmt.Printf("intermediateKeyValues[0].[key]/[value] = [%s][%s] \n", intermediateKeyValues[0].Key, intermediateKeyValues[0].Value)
-    
+    debug("Intermediate key/value pairs %v\n", intermediateKeyValues)
 
     /* Now lets arrange key/value pairs per their corresponding bucket */
     kvFileList := make([]KeyValueFileList, nReduce)
@@ -62,12 +65,14 @@ func doMap(
       kvFileList[i].kv = kvArr
     }
     
+
+    // Need to sort intermediate values per key
     /* Assign each key/value pair to its corresponding bucket */
     for i := 0 ; i < len(intermediateKeyValues); i++ {
       /* Get the bucket number for this key/value */
       r := int(ihash(intermediateKeyValues[i].Key)%uint32(nReduce))
       
-      //fmt.Printf("Bucket[%d] value[%s] nreduce[%d]\n", r, intermediateKeyValues[i], nReduce)
+      debug("Bucket[%d], value[%s], nreduce[%d]\n", r, intermediateKeyValues[i], nReduce)
       /* Now append key/value into array for that corresponding bucket */
       kvFileList[r].kv = append(kvFileList[r].kv, intermediateKeyValues[i])
     }
@@ -75,16 +80,11 @@ func doMap(
     
     /* Write each key/value pair to its corresponding output file */
     for i := 0; i < nReduce; i++ {
-    
-      /* Open target file */
-      //fmt.Printf("MAP: Result File [%s]\n", kvFileList[i].ofile)
-      //fmt.Printf("MAP: Marshalling array [%v]\n", kvFileList[i].kv)
+      // Marshall the key/value pairs array 
+      mFile, err := json.Marshal(kvFileList[i].kv)
       
-      /* Marshall the key/value pairs array */
-      kv_m, err := json.Marshal(kvFileList[i].kv)
-      
-      /* Write the result */
-      err = ioutil.WriteFile(kvFileList[i].ofile, kv_m, 0644)
+      // Write the result and check for errors
+      err = ioutil.WriteFile(kvFileList[i].ofile, mFile, 0644)
       checkError(err)
     }
 }

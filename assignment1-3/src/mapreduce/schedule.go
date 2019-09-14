@@ -24,37 +24,55 @@ func (mr *Master) schedule(phase jobPhase) {
 	// Remember that workers may fail, and that any given worker may finish
 	// multiple tasks.
 
-	/* Loop over n tasks as each task need to be assigned */
+	
+	/* A waitGroup wait for a collection of goroutines to finish
+	 * Per each task, a goroutine is a added to this collection
+	 * Finishes when all goroutines are done
+	 */
 	var wait_group sync.WaitGroup
-	// firstly, we have nTasks, and our job is dividing these tasks into the worker by the call function
+
+	// Iterate over number of tasks as each task need to be assigned to a worker 
 	for i:=0; i < ntasks; i++ {
+	
+	    // Setup doTask arguments
+	    args := DoTaskArgs{
+		    JobName: 		mr.jobName,
+		    File: 			mr.files[i],
+		    Phase: 			phase,
+		    TaskNumber: 	i,
+		    NumOtherPhase:	nios,
+		}
+	    
+	    // Adding a goroutine to waitGroup
 	    wait_group.Add(1)
 
-	    //struct of DoTaskArgs: the information of the job
-	    var args DoTaskArgs
-	    args.JobName = mr.jobName
-	    args.File = mr.files[i]
-	    args.Phase = phase
-	    args.TaskNumber = i
-	    args.NumOtherPhase = nios
-	    
-	    // use go routines
 	    go func ()  {
-	        defer wait_group.Done()
-	        // keep runing until success
+	        /* Infinite loop, it can break out of this loop only when worker is
+	         * assigned a doTask and sent back to available registerChannel
+	         */
 	        for {
-	            // all the worker is stored in the registerChan channel
-	            worker := <-mr.registerChannel
+	            // Get an available worker from register channel
+	            workerID := <-mr.registerChannel
 
-	            if (call(worker, "Worker.DoTask", &args, nil)){
-	                go func(){mr.registerChannel <- worker} ()
+	            // Do an RPC call for DoTask with arguments and available workerID
+	            if (call(workerID, "Worker.DoTask", &args, new(struct{}))){
+	            	debug("Worker succesfully assigned")
+
+	            	// Send back worker to register channel
+	                go func(){mr.registerChannel <- workerID} ()
+
+	                /* Only if the RPC call is successfull we can break out 
+	            	 * of this infinite loop. This handles worker failure or 
+	            	 * bad network connections
+	            	 */
 	                break
-	            }
+	            }	        
 	        }
+	        // When this goroutine finishes, it can me marked as done in waitGroup
+	        wait_group.Done()
 	    }()
 	}
-	// the finish
-	wait_group.Wait()
 
+	wait_group.Wait()
 	debug("Schedule: %v phase done\n", phase)
 }

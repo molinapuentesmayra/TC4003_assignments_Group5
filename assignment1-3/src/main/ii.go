@@ -13,22 +13,24 @@ import "sort"
 // and the value is the file's contents. The return value should be a slice of
 // key/value pairs, each represented by a mapreduce.KeyValue.
 func mapF(document string, value string) (res []mapreduce.KeyValue) {
-	// TODO: you should complete this to do the inverted index challenge
+	//fmt.Println("Entering mapF function")
+
 	var keyValuePair []mapreduce.KeyValue
 	
-	x := func(r rune) bool {
+	// Set up function for FieldsFunc, breaks when it detects nonletter
+	f := func(r rune) bool {
 		return !unicode.IsLetter(r)
 	}
 	
-	/* FieldsFunc breaks the string every time x is satisfied, returns an array of slices of s*/
-	words := strings.FieldsFunc(value, x)
+	//FieldsFunc w/function f above returns string in words
+	words := strings.FieldsFunc(value,f)
 
-	/* The intermmediate key/value pair will be word,document */
+	// The intermediate key/value pair will be word,document
 	for _ , token := range words {
         keyValuePair = append(keyValuePair, mapreduce.KeyValue{token, document})
     }
 	
-	//fmt.Println(keyValuePair)
+	//fmt.Println("Intermediate key/value pair\n %v\n", keyValuePair)
 	
     return keyValuePair
 }
@@ -37,26 +39,35 @@ func mapF(document string, value string) (res []mapreduce.KeyValue) {
 // list of that key's string value (merged across all inputs). The return value
 // should be a single output value for that key.
 func reduceF(key string, values []string) string {
-	// TODO: you should complete this to do the inverted index challenge
-	
-    countMap := make(map[string]int)
+	//fmt.Println("Entering reduceF function")
 
-    for _, documents := range values {
-		_, ok := countMap[documents]
+    /* Iterate through all the array of values received
+     * this way we have access to each document per key
+     * Using a map to filter and keep unique documents only
+     */
+ 	docMap := make(map[string]int)
+    for _, document := range values {
+		_, ok := docMap[document]
+			// Only if there is no entry already, add new one
 			if !ok{
-				countMap[documents] = 1
+				docMap[document] = 1
 			} 
     }
 
-    keys := make([]string, 0, len(countMap))
-    for word, _ := range countMap{
-			keys = append(keys, word)		
+    /* Set up a slice w/ capacity for # documents
+     * Iterate through the map and append the indices
+     * which correspond to document names.
+     */
+    documentList := make([]string, 0, len(docMap))
+    for document, _ := range docMap{
+		documentList = append(documentList, document)		
 	}
 
-	sum := strconv.Itoa(len(keys))
+	// Sort list of documents
+	sort.Strings(documentList)
 
-	sort.Strings(keys)
-	result := sum + " " + strings.Join(keys, ",")
+	// Result is the # of documents followed by comma separated list of documents
+	result := strconv.Itoa(len(documentList)) + " " + strings.Join(documentList, ",")
 
 	return result
 }
