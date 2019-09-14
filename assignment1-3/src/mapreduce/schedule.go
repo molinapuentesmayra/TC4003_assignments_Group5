@@ -1,5 +1,9 @@
 package mapreduce
 
+import (
+    "sync"
+)
+
 // schedule starts and waits for all tasks in the given phase (Map or Reduce).
 func (mr *Master) schedule(phase jobPhase) {
 	var ntasks int
@@ -19,44 +23,38 @@ func (mr *Master) schedule(phase jobPhase) {
 	// them have been completed successfully should the function return.
 	// Remember that workers may fail, and that any given worker may finish
 	// multiple tasks.
-	//
-	// TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
-	//
 
 	/* Loop over n tasks as each task need to be assigned */
-	i := 0
-	for i < ntasks {
-		/* register channel is updated regularly with available workers */
-		/* These workers need to be registered w/master */
-		workerId := <-mr.registerChannel
+	var wait_group sync.WaitGroup
+	// firstly, we have nTasks, and our job is dividing these tasks into the worker by the call function
+	for i:=0; i < ntasks; i++ {
+	    wait_group.Add(1)
 
-		/* set up arguments needed for RPC call for map/reduce common tasks */
-		var callArgs DoTaskArgs
-		callArgs.Phase 			= phase
-		callArgs.TaskNumber 	= i
-		callArgs.NumOtherPhase 	= nios
-		callArgs.JobName 		= mr.jobName
+	    //struct of DoTaskArgs: the information of the job
+	    var args DoTaskArgs
+	    args.JobName = mr.jobName
+	    args.File = mr.files[i]
+	    args.Phase = phase
+	    args.TaskNumber = i
+	    args.NumOtherPhase = nios
+	    
+	    // use go routines
+	    go func ()  {
+	        defer wait_group.Done()
+	        // keep runing until success
+	        for {
+	            // all the worker is stored in the registerChan channel
+	            worker := <-mr.registerChannel
 
-		/* Only the map phase needs the input files */
-		if phase == mapPhase {
-			callArgs.File = mr.files[i]
-		}
-
-		/* If there is an error in RPC call, status will be false */
-		status := call(workerId, "Worker.DoTask", &callArgs, new(struct{}))
-		if !status{
-			/*TODO what happens when this DoTask RPC fails */
-		}
-
-		var registrationArgs RegisterArgs
-		registrationArgs.Worker = workerId
-		registrationStatus := call("Mayra", "Master.Register", registrationArgs, new(struct{}))
-		if !registrationStatus{
-			/*TODO what happens when registrations RPC fails */
-		}
-
-		i++
+	            if (call(worker, "Worker.DoTask", &args, nil)){
+	                go func(){mr.registerChannel <- worker} ()
+	                break
+	            }
+	        }
+	    }()
 	}
+	// the finish
+	wait_group.Wait()
 
 	debug("Schedule: %v phase done\n", phase)
 }
